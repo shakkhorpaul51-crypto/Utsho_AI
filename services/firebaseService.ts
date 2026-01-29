@@ -184,13 +184,22 @@ export const adminListAllUsers = async (): Promise<any[]> => {
   }));
 };
 
+// Helper to sanitize messages for Firestore (strips base64 image data)
+const sanitizeMessages = (messages: Message[]) => {
+  return messages.map(m => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { imagePart, ...rest } = m; // Remove imagePart to save space
+    return {
+      ...rest,
+      timestamp: Timestamp.fromDate(new Date(m.timestamp))
+    };
+  });
+};
+
 export const saveSession = async (email: string, session: ChatSession) => {
   if (!db) return;
   const sessionRef = doc(db, 'users', email, 'sessions', session.id);
-  const serializedMessages = session.messages.map(m => ({
-    ...m,
-    timestamp: Timestamp.fromDate(new Date(m.timestamp))
-  }));
+  const serializedMessages = sanitizeMessages(session.messages);
 
   await setDoc(sessionRef, {
     id: session.id,
@@ -203,11 +212,15 @@ export const saveSession = async (email: string, session: ChatSession) => {
 export const updateSessionMessages = async (email: string, sessionId: string, messages: Message[]) => {
   if (!db) return;
   const sessionRef = doc(db, 'users', email, 'sessions', sessionId);
-  const serializedMessages = messages.map(m => ({
-    ...m,
-    timestamp: Timestamp.fromDate(new Date(m.timestamp))
-  }));
-  await updateDoc(sessionRef, { messages: serializedMessages });
+  const serializedMessages = sanitizeMessages(messages);
+  
+  try {
+    // Using setDoc with merge:true is often safer than updateDoc
+    await setDoc(sessionRef, { messages: serializedMessages }, { merge: true });
+  } catch (e) {
+    console.error("Firestore Save Error:", e);
+    throw e;
+  }
 };
 
 export const getSessions = async (email: string): Promise<ChatSession[]> => {
