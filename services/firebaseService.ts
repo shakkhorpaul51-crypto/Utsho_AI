@@ -111,7 +111,6 @@ export const saveUserProfile = async (profile: UserProfile) => {
     gender: profile.gender,
     age: profile.age,
     picture: profile.picture,
-    customApiKey: profile.customApiKey || '',
     googleId: profile.googleId || ''
   }, { merge: true });
 };
