@@ -126,6 +126,20 @@ export const getUserProfile = async (email: string): Promise<UserProfile | null>
   return null;
 };
 
+/**
+ * Administrative: List all users in the database.
+ * Only intended to be called when the active user is the Admin.
+ */
+export const adminListAllUsers = async (): Promise<any[]> => {
+  if (!db) return [];
+  const usersRef = collection(db, 'users');
+  const querySnapshot = await getDocs(usersRef);
+  return querySnapshot.docs.map(doc => ({
+    email: doc.id,
+    ...doc.data()
+  }));
+};
+
 export const saveSession = async (email: string, session: ChatSession) => {
   if (!db) return;
   const sessionRef = doc(db, 'users', email, 'sessions', session.id);
