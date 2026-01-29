@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Plus, MessageSquare, Trash2, Menu, X, Sparkles, LogOut, Facebook, ShieldCheck, Zap, Globe, RefreshCcw, Settings, Key, ExternalLink, Mail, CheckCircle2, ArrowRight, Cloud, CloudOff, AlertTriangle, ShieldAlert, Calendar, Instagram } from 'lucide-react';
+import { Send, Plus, MessageSquare, Trash2, Menu, X, Sparkles, LogOut, Facebook, ShieldCheck, Zap, Globe, RefreshCcw, Settings, Key, ExternalLink, Mail, CheckCircle2, ArrowRight, Cloud, CloudOff, AlertTriangle, ShieldAlert, Calendar, Instagram, UserCircle } from 'lucide-react';
 import { ChatSession, Message, UserProfile, Gender } from './types';
 import { streamChatResponse, checkApiHealth, fetchFreshKey } from './services/geminiService';
 import * as db from './services/firebaseService';
@@ -18,7 +18,9 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [dbStatus, setDbStatus] = useState<boolean>(db.isDatabaseEnabled());
   
-  const [onboardingStep, setOnboardingStep] = useState<1 | 4>(1);
+  const [onboardingStep, setOnboardingStep] = useState<1 | 2 | 4>(1);
+  const [tempAge, setTempAge] = useState<string>('');
+  const [tempGender, setTempGender] = useState<Gender | null>(null);
   const [customKeyInput, setCustomKeyInput] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -71,34 +73,61 @@ const App: React.FC = () => {
       setIsSyncing(true);
       const googleUser = await db.loginWithGoogle();
       if (googleUser) {
-        let profile = await db.getUserProfile(googleUser.email);
+        const existingCloudProfile = await db.getUserProfile(googleUser.email);
         
-        if (!profile) {
-          // New User: Use the data fetched directly from Google account
-          profile = googleUser;
-          if (dbStatus) await db.saveUserProfile(profile);
-        }
-
-        setUserProfile(profile);
-        localStorage.setItem('utsho_profile', JSON.stringify(profile));
-        setCustomKeyInput(profile.customApiKey || '');
-        setOnboardingStep(4);
-        
-        const cloudSessions = await db.getSessions(profile.email);
-        setSessions(cloudSessions);
-        if (cloudSessions.length > 0) {
-          setActiveSessionId(cloudSessions[0].id);
+        if (existingCloudProfile) {
+          // Returning User: Skip directly to app
+          setUserProfile(existingCloudProfile);
+          localStorage.setItem('utsho_profile', JSON.stringify(existingCloudProfile));
+          setCustomKeyInput(existingCloudProfile.customApiKey || '');
+          setOnboardingStep(4);
+          
+          const cloudSessions = await db.getSessions(googleUser.email);
+          setSessions(cloudSessions);
+          if (cloudSessions.length > 0) {
+            setActiveSessionId(cloudSessions[0].id);
+          } else {
+            createNewSession(googleUser.email);
+          }
+          await performHealthCheck(existingCloudProfile.customApiKey);
         } else {
-          createNewSession(profile.email);
+          // New User: Show the single personalization page
+          setUserProfile(googleUser);
+          setTempAge(googleUser.age.toString());
+          setTempGender(googleUser.gender);
+          setOnboardingStep(2);
         }
-        
-        await performHealthCheck(profile.customApiKey);
       }
     } catch (e: any) {
       alert(`Login failed: ${e.message}`);
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  const finalizePersonalization = async () => {
+    if (!userProfile || !tempGender || !tempAge) return;
+    setIsSyncing(true);
+    
+    const finalProfile: UserProfile = {
+      ...userProfile,
+      age: parseInt(tempAge) || 20,
+      gender: tempGender,
+      // Update avatar color based on gender
+      picture: `https://ui-avatars.com/api/?name=${userProfile.name}&background=${tempGender === 'male' ? '4f46e5' : 'db2777'}&color=fff`
+    };
+
+    setUserProfile(finalProfile);
+    localStorage.setItem('utsho_profile', JSON.stringify(finalProfile));
+    
+    if (dbStatus) {
+      await db.saveUserProfile(finalProfile);
+    }
+    
+    setOnboardingStep(4);
+    createNewSession(finalProfile.email);
+    setIsSyncing(false);
+    await performHealthCheck();
   };
 
   const performHealthCheck = async (key?: string) => {
@@ -226,7 +255,8 @@ const App: React.FC = () => {
     );
   };
 
-  if (!userProfile || onboardingStep === 1) {
+  // Step 1: Login
+  if (onboardingStep === 1) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
         <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-10 shadow-2xl space-y-8 animate-in fade-in zoom-in duration-300">
@@ -234,11 +264,71 @@ const App: React.FC = () => {
             <div className="flex justify-center"><div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white floating-ai shadow-[0_0_20px_rgba(79,70,229,0.4)]"><Sparkles size={32} /></div></div>
             <div className="space-y-2">
               <h1 className="text-3xl font-black tracking-tight">Utsho AI</h1>
-              <p className="text-zinc-500 text-sm">Instant Sync • One-Tap Personality • Secure</p>
+              <p className="text-zinc-500 text-sm">Secure Private AI • Shakkhor Paul Digital</p>
             </div>
             <button onClick={handleGoogleLogin} disabled={isSyncing} className="w-full bg-white text-zinc-950 font-bold py-4 rounded-2xl flex items-center justify-center gap-3 hover:bg-zinc-100 transition-all active:scale-95 disabled:opacity-50">
               {isSyncing ? <RefreshCcw size={20} className="animate-spin" /> : <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="" />}
-              {isSyncing ? 'Synchronizing Profile...' : 'Sign in with Google'}
+              {isSyncing ? 'Connecting...' : 'Sign in with Google'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Step 2: Personalization (Age & Gender on one screen)
+  if (onboardingStep === 2 && userProfile) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+        <div className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-10 shadow-2xl space-y-10 animate-in fade-in zoom-in duration-300">
+          <div className="text-center space-y-3">
+            <h1 className="text-3xl font-black tracking-tight flex items-center justify-center gap-2"><UserCircle className="text-indigo-500" /> Personalize</h1>
+            <p className="text-zinc-500 text-sm">Pick your details to set the AI's behavior towards you.</p>
+          </div>
+
+          <div className="space-y-8">
+            {/* Age Selection */}
+            <div className="space-y-3">
+              <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest px-1">How old are you?</label>
+              <div className="relative group">
+                <Calendar className="absolute left-5 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-indigo-500 transition-colors" size={20} />
+                <input 
+                  type="number" 
+                  value={tempAge} 
+                  onChange={e => setTempAge(e.target.value)} 
+                  placeholder="Enter your age" 
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl py-4 pl-14 pr-6 focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
+                />
+              </div>
+            </div>
+
+            {/* Gender Selection */}
+            <div className="space-y-3">
+              <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest px-1">Select Gender</label>
+              <div className="grid grid-cols-2 gap-4">
+                <button 
+                  onClick={() => setTempGender('male')} 
+                  className={`p-6 rounded-3xl border-2 flex flex-col items-center gap-3 transition-all active:scale-95 ${tempGender === 'male' ? 'border-indigo-500 bg-indigo-500/10' : 'border-zinc-800 bg-zinc-800/50 hover:border-zinc-700'}`}
+                >
+                  <span className="text-4xl">👦</span>
+                  <span className={`font-bold ${tempGender === 'male' ? 'text-indigo-400' : 'text-zinc-500'}`}>Male</span>
+                </button>
+                <button 
+                  onClick={() => setTempGender('female')} 
+                  className={`p-6 rounded-3xl border-2 flex flex-col items-center gap-3 transition-all active:scale-95 ${tempGender === 'female' ? 'border-pink-500 bg-pink-500/10' : 'border-zinc-800 bg-zinc-800/50 hover:border-zinc-700'}`}
+                >
+                  <span className="text-4xl">👧</span>
+                  <span className={`font-bold ${tempGender === 'female' ? 'text-pink-400' : 'text-zinc-500'}`}>Female</span>
+                </button>
+              </div>
+            </div>
+
+            <button 
+              onClick={finalizePersonalization} 
+              disabled={!tempGender || !tempAge || isSyncing} 
+              className="w-full bg-white text-zinc-950 font-black py-4 rounded-2xl shadow-xl flex items-center justify-center gap-2 hover:bg-zinc-100 transition-all active:scale-[0.98] disabled:opacity-50"
+            >
+              {isSyncing ? <RefreshCcw size={20} className="animate-spin" /> : <><Sparkles size={20} /> Start Chatting</>}
             </button>
           </div>
         </div>
@@ -247,10 +337,12 @@ const App: React.FC = () => {
   }
 
   const activeSession = sessions.find(s => s.id === activeSessionId);
-  const isUserAdmin = db.isAdmin(userProfile.email);
-  const userRoleLabel = userProfile.gender === 'male' 
+  const isUserAdmin = db.isAdmin(userProfile?.email || '');
+  const userRoleLabel = userProfile?.gender === 'male' 
     ? (userProfile.age >= 50 ? 'SIR' : (userProfile.age >= 30 ? 'SNR' : 'BRO')) 
-    : (userProfile.age >= 50 ? 'MOTH' : (userProfile.age >= 30 ? 'LADY' : 'CHRM'));
+    : (userProfile?.age >= 50 ? 'MOTH' : (userProfile?.age >= 30 ? 'LADY' : 'CHRM'));
+
+  if (!userProfile || onboardingStep !== 4) return null;
 
   return (
     <div className="flex h-screen bg-zinc-950 text-zinc-100 overflow-hidden font-['Hind_Siliguri',_sans-serif]">
@@ -370,9 +462,6 @@ const App: React.FC = () => {
                   <a href="mailto:shakkhorpaul50@gmail.com" className="text-zinc-500 hover:text-indigo-400 transition-colors" title="Email">
                     <Mail size={18} />
                   </a>
-               </div>
-               <div className="hidden md:block text-[9px] text-zinc-700 font-bold uppercase tracking-widest">
-                  Powered by Shakkhor Paul
                </div>
             </footer>
           </div>
