@@ -157,9 +157,9 @@ export const streamChatResponse = async (
     const ai = new GoogleGenAI({ apiKey });
     const recentHistory = history.length > 20 ? history.slice(-20) : history;
     const sdkHistory = recentHistory.slice(0, -1).map(msg => ({
-      role: (msg.role === 'user' ? 'user' : 'model') as any,
+      role: (msg.role === 'user' ? 'user' : 'model'),
       parts: [{ text: msg.content || "" }]
-    })).filter(h => h.parts[0].text !== "");
+    }));
 
     const config: any = {
       systemInstruction: getSystemInstruction(profile),
@@ -181,6 +181,8 @@ export const streamChatResponse = async (
     });
 
     let currentResponse = response;
+    const conversationTurns: any[] = [...sdkHistory, { role: 'user', parts: [{ text: lastMsg.content }] }];
+
     while (currentResponse.functionCalls && currentResponse.functionCalls.length > 0) {
       onStatusChange("Querying database...");
       const toolResponses: any[] = [];
@@ -200,14 +202,21 @@ export const streamChatResponse = async (
         });
       }
 
+      // Add the model's function call turn and the user's function response turn
+      const modelContent = currentResponse.candidates?.[0]?.content;
+      if (modelContent) {
+        conversationTurns.push(modelContent);
+        conversationTurns.push({
+          role: 'user',
+          parts: toolResponses.map(tr => ({ functionResponse: tr }))
+        });
+      } else {
+        break; // Safety break if content is missing
+      }
+
       currentResponse = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: [
-          ...sdkHistory, 
-          { role: 'user', parts: [{ text: lastMsg.content }] },
-          currentResponse.candidates[0].content,
-          { role: 'user', parts: [{ functionResponses: toolResponses }] }
-        ],
+        contents: conversationTurns,
         config: config
       });
     }
