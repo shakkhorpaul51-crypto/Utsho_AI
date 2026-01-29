@@ -134,14 +134,50 @@ const App: React.FC = () => {
     if (db.isDatabaseEnabled()) db.saveSession(emailOverride || userProfile!.email, newSession).catch(console.error);
   };
 
+  const compressImage = (base64Str: string, maxWidth = 800): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height *= maxWidth / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxWidth) {
+            width *= maxWidth / height;
+            height = maxWidth;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7)); // High compression to fit Firestore 1MB limit
+      };
+    });
+  };
+
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setApiStatusText("Optimizing...");
     const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64 = (reader.result as string).split(',')[1];
-      setSelectedImage({ data: base64, mimeType: file.type });
-      setImagePreview(reader.result as string);
+    reader.onloadend = async () => {
+      const originalBase64 = reader.result as string;
+      // Compress immediately for persistence compatibility
+      const compressed = await compressImage(originalBase64);
+      const dataOnly = compressed.split(',')[1];
+      
+      setSelectedImage({ data: dataOnly, mimeType: 'image/jpeg' });
+      setImagePreview(compressed);
+      setApiStatusText("Active");
     };
     reader.readAsDataURL(file);
   };

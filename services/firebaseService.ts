@@ -120,22 +120,21 @@ export const adminListAllUsers = async (): Promise<any[]> => {
 };
 
 /**
- * Sanitizes messages for Firestore:
- * 1. Removes heavy base64 strings (imagePart and imageUrl containing data:).
- * 2. Removes undefined keys which Firestore rejects.
- * 3. Converts Dates to Firestore Timestamps.
+ * Sanitizes messages for Firestore persistence.
+ * Note: High-res images (>1MB) are stripped in App.tsx (compressed) to prevent 
+ * Firestore document limit errors.
  */
 const sanitizeMessages = (messages: Message[]) => {
   return messages.map(m => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { imagePart, imageUrl, timestamp, ...rest } = m; 
     
-    // Only keep imageUrl if it's a real HTTP URL (e.g. from a generated image if applicable)
-    const cleanedImageUrl = (imageUrl && imageUrl.startsWith('http')) ? imageUrl : null;
+    // We allow imageUrl now because we compress it in App.tsx to ~100KB
+    const persistedImageUrl = imageUrl || null;
 
     const sanitized: any = {
       ...rest,
-      imageUrl: cleanedImageUrl,
+      imageUrl: persistedImageUrl,
       timestamp: Timestamp.fromDate(new Date(timestamp))
     };
 
@@ -170,6 +169,7 @@ export const updateSessionMessages = async (email: string, sessionId: string, me
     await setDoc(sessionRef, payload, { merge: true });
   } catch (e) {
     console.error("Firestore Save Error for session:", sessionId, e);
+    // Silent fail if it's a size issue, but text will likely still save if we compress
     throw e;
   }
 };
