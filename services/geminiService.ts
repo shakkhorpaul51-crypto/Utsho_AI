@@ -80,9 +80,8 @@ const getSystemInstruction = (profile: UserProfile) => {
   return `Your name is Utsho. You are a high-performance AI companion.${poolInfo}
 
 CAPABILITIES:
-1. GOOGLE SEARCH: Use for current news, scores, and facts.
-2. VISION: You can analyze images provided by the user.
-3. MULTI-BUBBLE: Always split your responses into 2-3 snappy messages using '[SPLIT]'.
+1. VISION: You can analyze images provided by the user.
+2. MULTI-BUBBLE: Always split your responses into 2-3 snappy messages using '[SPLIT]'.
 
 ${isCreator ? 'You are speaking to your creator, Shakkhor. Be brilliant and efficient.' : ''}
 ${isDebi ? 'You are speaking to the Queen, Debi. Be sweet and devoted.' : ''}
@@ -95,7 +94,7 @@ export const checkApiHealth = async (profile?: UserProfile): Promise<{healthy: b
   try {
     const ai = new GoogleGenAI({ apiKey: key });
     await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash',
       contents: 'ping',
       config: { thinkingConfig: { thinkingBudget: 0 } }
     });
@@ -121,8 +120,8 @@ export const streamChatResponse = async (
   
   if (!apiKey) {
     const errorMsg = triedKeys.length > 0 
-      ? `Critical: All ${triedKeys.length} nodes returned errors. Last error: ${lastNodeError}`
-      : "Pool Exhausted. All nodes are currently cooling down. Please wait or check your keys.";
+      ? `Critical: All ${triedKeys.length} nodes failed. Last error: ${lastNodeError}`
+      : "Pool Exhausted. All nodes are currently cooling down.";
     onError(new Error(errorMsg));
     return;
   }
@@ -157,11 +156,15 @@ export const streamChatResponse = async (
       thinkingConfig: { thinkingBudget: 0 },
     };
 
-    if (isAdminCommand) config.tools = [{ functionDeclarations: [listUsersTool, getApiKeyHealthReportTool] }];
-    else config.tools = [{ googleSearch: {} }];
+    // We use gemini-2.0-flash as it is the most stable model for free tier keys right now
+    const modelId = 'gemini-2.0-flash';
+
+    if (isAdminCommand) {
+      config.tools = [{ functionDeclarations: [listUsersTool, getApiKeyHealthReportTool] }];
+    }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: modelId,
       contents: sdkHistory,
       config: config
     });
@@ -189,7 +192,7 @@ export const streamChatResponse = async (
       if (modelContent) {
         sdkHistory.push(modelContent);
         sdkHistory.push({ role: 'user', parts: toolResponses.map(tr => ({ functionResponse: tr })) });
-        currentResponse = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: sdkHistory, config: config });
+        currentResponse = await ai.models.generateContent({ model: modelId, contents: sdkHistory, config: config });
       }
     }
 
@@ -200,14 +203,14 @@ export const streamChatResponse = async (
     lastNodeError = error.message || "Unknown error";
     
     // Blacklist for errors that suggest the node shouldn't be used again soon
-    const shouldBlacklist = errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("key not found") || errMsg.includes("invalid") || errMsg.includes("403") || errMsg.includes("400");
+    const shouldBlacklist = errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("key not found") || errMsg.includes("invalid") || errMsg.includes("403") || errMsg.includes("400") || errMsg.includes("not found");
     
     if (shouldBlacklist && !profile.customApiKey) {
       keyBlacklist.set(apiKey, Date.now() + BLACKLIST_DURATION);
       console.warn(`Node ${attempt} failed: ${error.message}. Swapping...`);
       
       if (attempt < totalKeys) {
-        onStatusChange(`Node Swap (${attempt}/${totalKeys})...`);
+        onStatusChange(`Swap Node (${attempt}/${totalKeys})...`);
         return streamChatResponse(history, profile, onChunk, onComplete, onError, onStatusChange, attempt + 1, [...triedKeys, apiKey]);
       }
     }
