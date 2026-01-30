@@ -10,6 +10,7 @@ export interface UserProfile {
   age: number;
   googleId?: string;
   customApiKey?: string;
+  emotionalMemory?: string; // New: Stores AI's long-term observations
 }
 
 export interface Message {

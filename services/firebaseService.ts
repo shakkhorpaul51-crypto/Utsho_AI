@@ -82,8 +82,23 @@ export const saveUserProfile = async (profile: UserProfile) => {
     age: profile.age,
     picture: profile.picture,
     googleId: profile.googleId || '',
-    customApiKey: profile.customApiKey || ''
+    customApiKey: profile.customApiKey || '',
+    emotionalMemory: profile.emotionalMemory || ''
   }, { merge: true });
+};
+
+export const updateUserMemory = async (email: string, memoryUpdate: string) => {
+  if (!db || !email) return;
+  const userRef = doc(db, 'users', email);
+  const snap = await getDoc(userRef);
+  let existingMemory = "";
+  if (snap.exists()) {
+    existingMemory = snap.data().emotionalMemory || "";
+  }
+  // Append or refine memory
+  const newMemory = `${existingMemory}\n[Update ${new Date().toLocaleDateString()}]: ${memoryUpdate}`.slice(-2000); 
+  await setDoc(userRef, { emotionalMemory: newMemory }, { merge: true });
+  return newMemory;
 };
 
 export const getUserProfile = async (email: string): Promise<UserProfile | null> => {
@@ -119,17 +134,10 @@ export const adminListAllUsers = async (): Promise<any[]> => {
   return querySnapshot.docs.map(doc => ({ email: doc.id, ...doc.data() }));
 };
 
-/**
- * Sanitizes messages for Firestore persistence.
- * Note: High-res images (>1MB) are stripped in App.tsx (compressed) to prevent 
- * Firestore document limit errors.
- */
 const sanitizeMessages = (messages: Message[]) => {
   return messages.map(m => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { imagePart, imageUrl, timestamp, ...rest } = m; 
-    
-    // We allow imageUrl now because we compress it in App.tsx to ~100KB
     const persistedImageUrl = imageUrl || null;
 
     const sanitized: any = {
@@ -138,9 +146,7 @@ const sanitizeMessages = (messages: Message[]) => {
       timestamp: Timestamp.fromDate(new Date(timestamp))
     };
 
-    // Remove any undefined properties
     Object.keys(sanitized).forEach(key => sanitized[key] === undefined && delete sanitized[key]);
-
     return sanitized;
   });
 };
@@ -169,7 +175,6 @@ export const updateSessionMessages = async (email: string, sessionId: string, me
     await setDoc(sessionRef, payload, { merge: true });
   } catch (e) {
     console.error("Firestore Save Error for session:", sessionId, e);
-    // Silent fail if it's a size issue, but text will likely still save if we compress
     throw e;
   }
 };

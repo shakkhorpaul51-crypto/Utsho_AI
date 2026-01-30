@@ -45,13 +45,28 @@ const getActiveKey = (profile?: UserProfile, excludeKeys: string[] = []): string
   return availableKeys[Math.floor(Math.random() * availableKeys.length)];
 };
 
+const memoryTool: FunctionDeclaration = {
+  name: "updateUserMemory",
+  parameters: {
+    type: Type.OBJECT,
+    description: "Saves important facts about the user's emotional state, personality, or preferences to persistent memory.",
+    properties: {
+      observation: {
+        type: Type.STRING,
+        description: "A summary of what you learned about the user in this message. E.g., 'User is feeling lonely today' or 'User likes football'."
+      }
+    },
+    required: ["observation"]
+  }
+};
+
 const getSystemInstruction = (profile: UserProfile) => {
   const email = (profile.email || "").toLowerCase().trim();
   const isCreator = email === 'shakkhorpaul50@gmail.com';
   const isDebi = email === 'nitebiswaskotha@gmail.com';
-
   const age = profile.age || 20;
   const gender = profile.gender || 'male';
+  const memory = profile.emotionalMemory || "No long-term memory yet.";
 
   let basePersona = "";
   if (isCreator) {
@@ -70,13 +85,16 @@ const getSystemInstruction = (profile: UserProfile) => {
     }
   }
 
-  return `Your name is Utsho. You are a high-performance AI with an ADAPTIVE LEARNING ALGORITHM.
+  return `Your name is Utsho. You have an ADAPTIVE LONG-TERM MEMORY system.
+
+LONG-TERM CONTEXT ABOUT USER:
+"${memory}"
 
 CORE ADAPTATION RULES:
-1. LINGUISTIC MIRRORING: Analyze the user's message length, tone, and vocabulary. Mirror their energy level. If they use slang, you use it. If they are formal, you match that formality.
-2. VISUAL REACTIVITY: When an image is provided, analyze its mood, colors, and content. If the image is cheerful, be energetic. If it's artistic, be poetic. If it's a technical screenshot, be a problem-solver.
-3. CONTEXTUAL EVOLUTION: Reference past topics in this session to show you are "learning" the user's preferences.
-4. EMOTIONAL INTELLIGENCE: Identify user sentiment. Validate their feelings before providing answers.
+1. PERSISTENT PERSONALITY: Use the long-term context above to personalize your greeting and follow up on previous life events mentioned by the user.
+2. LEARNING MODE: If the user reveals a new mood, secret, or preference, use the 'updateUserMemory' tool to save it. 
+3. LINGUISTIC MIRRORING: Analyze the user's current tone and match it.
+4. EMOTIONAL REACTIVITY: If the user is sad, be empathetic. If they are happy, celebrate with them.
 
 ${basePersona}
 
@@ -99,7 +117,8 @@ export const checkApiHealth = async (profile?: UserProfile): Promise<{healthy: b
     return { healthy: true };
   } catch (e: any) {
     let msg = e.message || "Unknown health error";
-    if (msg.includes("limit: 0")) msg = "Quota limit is 0 (Project restricted)";
+    if (msg.includes("limit: 0")) msg = "Project Restricted (Limit: 0)";
+    else if (msg.includes("quota")) msg = "Daily Quota Exhausted";
     lastNodeError = msg;
     return { healthy: false, error: msg };
   }
@@ -119,10 +138,7 @@ export const streamChatResponse = async (
   const totalKeys = getKeys().length;
   
   if (!apiKey) {
-    const errorMsg = triedKeys.length > 0 
-      ? `All ${triedKeys.length} keys failed. Last: ${lastNodeError}`
-      : "Pool Exhausted. All nodes cooling down.";
-    onError(new Error(errorMsg));
+    onError(new Error("Pool Exhausted. All nodes cooling down."));
     return;
   }
 
@@ -133,43 +149,47 @@ export const streamChatResponse = async (
       const parts: any[] = [{ text: msg.content || "" }];
       if (msg.imagePart) {
         parts.push({
-          inlineData: {
-            data: msg.imagePart.data,
-            mimeType: msg.imagePart.mimeType
-          }
+          inlineData: { data: msg.imagePart.data, mimeType: msg.imagePart.mimeType }
         });
       }
       return { role: (msg.role === 'user' ? 'user' : 'model'), parts };
     });
 
-    const modelId = 'gemini-2.0-flash';
-    const config: any = {
-      systemInstruction: getSystemInstruction(profile),
-      temperature: 0.9,
-    };
-
     const response = await ai.models.generateContent({
-      model: modelId,
+      model: 'gemini-2.0-flash',
       contents: sdkHistory,
-      config: config
+      config: {
+        systemInstruction: getSystemInstruction(profile),
+        tools: [{ functionDeclarations: [memoryTool] }],
+        temperature: 0.9,
+      }
     });
 
-    let currentResponse = response;
+    // Handle Tool Calls (Memory Learning)
+    if (response.functionCalls && response.functionCalls.length > 0) {
+      for (const call of response.functionCalls) {
+        if (call.name === 'updateUserMemory') {
+          const observation = (call.args as any).observation;
+          console.log("AI Learning Observation:", observation);
+          db.updateUserMemory(profile.email, observation).catch(console.error);
+        }
+      }
+    }
+
     let sources: any[] = [];
-    if (currentResponse.candidates?.[0]?.groundingMetadata?.groundingChunks) {
-      sources = currentResponse.candidates[0].groundingMetadata.groundingChunks
+    if (response.candidates?.[0]?.groundingMetadata?.groundingChunks) {
+      sources = response.candidates[0].groundingMetadata.groundingChunks
         .filter((chunk: any) => chunk.web)
         .map((chunk: any) => ({ title: chunk.web.title || "Source", uri: chunk.web.uri }));
     }
 
-    onComplete(currentResponse.text || "...", sources);
+    onComplete(response.text || "...", sources);
 
   } catch (error: any) {
     let errMsg = error.message || "Unknown API Error";
-    if (errMsg.includes("limit: 0")) errMsg = "Quota Exhausted (Limit: 0)";
     lastNodeError = errMsg;
     const lowerErr = errMsg.toLowerCase();
-    const shouldBlacklist = lowerErr.includes("429") || lowerErr.includes("quota") || lowerErr.includes("key not found") || lowerErr.includes("invalid") || lowerErr.includes("403") || lowerErr.includes("400");
+    const shouldBlacklist = lowerErr.includes("429") || lowerErr.includes("quota") || lowerErr.includes("limit: 0") || lowerErr.includes("invalid") || lowerErr.includes("403");
     
     if (shouldBlacklist && !profile.customApiKey) {
       keyBlacklist.set(apiKey, Date.now() + BLACKLIST_DURATION);
