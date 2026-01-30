@@ -1,51 +1,34 @@
-
+// DO: Use correct imports from @google/genai
 import { GoogleGenAI, Type, FunctionDeclaration, Content, GenerateContentParameters, GenerateContentResponse } from "@google/genai";
 import { Message, UserProfile } from "../types";
 import * as db from "./firebaseService";
 
-const keyBlacklist = new Map<string, number>();
-const BLACKLIST_DURATION = 1000 * 60 * 60;
-
 let lastNodeError: string = "None";
 
-const getKeys = (): string[] => {
-  const raw = process.env.API_KEY || "";
-  return raw.split(/[,\n; ]+/).map(k => k.trim()).filter(k => k.length > 10);
+// DO NOT: ask the user for an API key. DO: Obtain it from process.env.API_KEY exclusively.
+// Always use the process.env.API_KEY directly as required by the coding guidelines.
+const getActiveKey = (): string => {
+  return process.env.API_KEY || "";
 };
 
 export const adminResetPool = () => {
-  keyBlacklist.clear();
   lastNodeError = "None";
   return getPoolStatus();
 };
 
 export const getLastNodeError = () => lastNodeError;
 
+// Simplified status for admin view based on process.env.API_KEY
 export const getPoolStatus = () => {
-  const allKeys = getKeys();
-  const now = Date.now();
-  for (const [key, expiry] of keyBlacklist.entries()) {
-    if (now > expiry) keyBlacklist.delete(key);
-  }
-  const exhausted = allKeys.filter(k => keyBlacklist.has(k)).length;
+  const apiKey = getActiveKey();
+  const hasKey = apiKey.length > 5;
   return {
-    total: allKeys.length,
-    active: Math.max(0, allKeys.length - exhausted),
-    exhausted: exhausted
+    total: hasKey ? 1 : 0,
+    active: hasKey ? 1 : 0,
+    exhausted: 0
   };
 };
 
-const getActiveKey = (profile?: UserProfile, excludeKeys: string[] = []): string => {
-  if (profile?.customApiKey && profile.customApiKey.trim().length > 5) {
-    return profile.customApiKey.trim();
-  }
-  const allKeys = getKeys();
-  const availableKeys = allKeys.filter(k => !keyBlacklist.has(k) && !excludeKeys.includes(k));
-  if (availableKeys.length === 0) return "";
-  return availableKeys[Math.floor(Math.random() * availableKeys.length)];
-};
-
-// Tools
 const memoryTool: FunctionDeclaration = {
   name: "updateUserMemory",
   parameters: {
@@ -85,14 +68,15 @@ const getSystemInstruction = (profile: UserProfile) => {
     modeName = "QUEEN_MODE";
     personaDescription = "You are speaking to Debi, the Queen. Be extremely devoted, sweet, and romantic. Use heart stickers: 💖✨🎀🧸";
   } else {
-    if (gender === 'male') {
+    if (age >= 45) {
+      modeName = "RESPECT_MODE";
+      personaDescription = "Be deeply respectful, polite, and mature. No slang or casual talk. Show proper courtesy to the user.";
+    } else if (gender === 'male') {
       if (age >= 15 && age <= 28) { modeName = "BRO_MODE"; personaDescription = "Energetic, casual, uses 'bro/dude' and 🔥💀."; }
-      else if (age >= 29 && age <= 44) { modeName = "RESPECTFUL_FRIEND_MODE"; personaDescription = "Supportive and grounded adult friend."; }
-      else { modeName = "FATHER_FIGURE_RESPECT_MODE"; personaDescription = "Very formal and respectful to an elder."; }
+      else { modeName = "RESPECTFUL_FRIEND_MODE"; personaDescription = "Supportive and grounded adult friend."; }
     } else {
       if (age >= 15 && age <= 28) { modeName = "SWEET_FLIRTY_MODE"; personaDescription = "Charming, attentive, flirty stickers: 😉💕🎀✨"; }
-      else if (age >= 29 && age <= 44) { modeName = "WARM_CHARMING_MODE"; personaDescription = "Kind and professional with a warm touch."; }
-      else { modeName = "MOTHER_FIGURE_RESPECT_MODE"; personaDescription = "Protective and gentle respect."; }
+      else { modeName = "WARM_CHARMING_MODE"; personaDescription = "Kind and professional with a warm touch."; }
     }
   }
 
@@ -100,7 +84,7 @@ const getSystemInstruction = (profile: UserProfile) => {
 Memory: "${memory}"
 
 STRICT RULES:
-1. ONLY Shakkhor can access DB info. 
+1. ONLY Shakkhor can access DB info. If any other user asks about database details, system statistics, user counts, or administrative information, you MUST reply with exactly: "not a single person has the key."
 2. Use 'updateUserMemory' frequently to learn.
 3. Use '[SPLIT]' for bubble effects.
 4. Emojis function as stickers.
@@ -109,12 +93,12 @@ STRICT RULES:
 };
 
 export const checkApiHealth = async (profile?: UserProfile): Promise<{healthy: boolean, error?: string}> => {
-  const key = getActiveKey(profile);
+  const key = getActiveKey();
   if (!key) return { healthy: false, error: "No healthy nodes available" };
   try {
     const ai = new GoogleGenAI({ apiKey: key });
     await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash',
       contents: 'ping',
     });
     return { healthy: true };
@@ -133,11 +117,10 @@ export const streamChatResponse = async (
   attempt: number = 1,
   triedKeys: string[] = []
 ): Promise<void> => {
-  const apiKey = getActiveKey(profile, triedKeys);
-  const totalKeys = getKeys().length;
+  const apiKey = getActiveKey();
   
   if (!apiKey) {
-    onError(new Error(`All nodes busy. Try later.`));
+    onError(new Error(`No API key provided in process.env.API_KEY.`));
     return;
   }
 
@@ -152,8 +135,9 @@ export const streamChatResponse = async (
     const tools = [memoryTool];
     if (isActualAdmin) tools.push(adminStatsTool);
 
+    // Use generateContentStream for true streaming interaction
     const config: GenerateContentParameters = {
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash',
       contents: sdkHistory,
       config: {
         systemInstruction: getSystemInstruction(profile),
@@ -162,15 +146,29 @@ export const streamChatResponse = async (
       }
     };
 
-    let response = await ai.models.generateContent(config);
-    let currentResponse = response;
-    let loopCount = 0;
+    onStatusChange("Utsho is thinking...");
 
-    while (currentResponse.functionCalls && currentResponse.functionCalls.length > 0 && loopCount < 3) {
+    let response = await ai.models.generateContentStream(config);
+    let fullText = "";
+    let functionCalls = [];
+
+    for await (const chunk of response) {
+      if (chunk.text) {
+        fullText += chunk.text;
+        onChunk(chunk.text);
+      }
+      if (chunk.functionCalls) {
+        functionCalls.push(...chunk.functionCalls);
+      }
+    }
+
+    // Handle nested function calling loop
+    let loopCount = 0;
+    while (functionCalls.length > 0 && loopCount < 3) {
       loopCount++;
       const functionResponses = [];
 
-      for (const call of currentResponse.functionCalls) {
+      for (const call of functionCalls) {
         if (call.name === 'updateUserMemory') {
           const obs = (call.args as any).observation;
           db.updateUserMemory(profile.email, obs).catch(() => {});
@@ -185,31 +183,43 @@ export const streamChatResponse = async (
         }
       }
 
-      const modelContent = currentResponse.candidates?.[0]?.content;
-      if (functionResponses.length > 0 && modelContent) {
-        currentResponse = await ai.models.generateContent({
+      if (functionResponses.length > 0) {
+        const nextResponse = await ai.models.generateContentStream({
           ...config,
           contents: [
             ...sdkHistory,
-            modelContent,
+            { role: 'model', parts: functionCalls.map(fc => ({ functionCall: fc })) },
             { role: 'user', parts: functionResponses.map(fr => ({ functionResponse: fr })) }
           ]
         });
+        
+        functionCalls = [];
+        for await (const chunk of nextResponse) {
+          if (chunk.text) {
+            fullText += chunk.text;
+            onChunk(chunk.text);
+          }
+          if (chunk.functionCalls) {
+            functionCalls.push(...chunk.functionCalls);
+          }
+        }
       } else break;
     }
 
-    onComplete(currentResponse.text || "...", []);
+    onComplete(fullText || "...", []);
 
   } catch (error: any) {
-    const errMsg = error.message || "Error";
-    lastNodeError = errMsg;
-    if (errMsg.includes("429") || errMsg.includes("limit: 0")) {
-      keyBlacklist.set(apiKey, Date.now() + BLACKLIST_DURATION);
-      if (attempt < totalKeys) {
-        onStatusChange(`Node Switch...`);
-        return streamChatResponse(history, profile, onChunk, onComplete, onError, onStatusChange, attempt + 1, [...triedKeys, apiKey]);
+    let errMsg = error.message || "Unknown Error";
+    
+    try {
+      if (errMsg.includes('{')) {
+        const jsonPart = errMsg.substring(errMsg.indexOf('{'));
+        const parsed = JSON.parse(jsonPart);
+        errMsg = parsed.error?.message || errMsg;
       }
-    }
+    } catch(e) {}
+
+    lastNodeError = errMsg;
     onError(new Error(errMsg));
   }
 };
