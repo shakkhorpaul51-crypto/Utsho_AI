@@ -5,15 +5,17 @@ import * as db from "./firebaseService";
 
 // Key -> Expiry Timestamp
 const keyBlacklist = new Map<string, number>();
-const RATE_LIMIT_DURATION = 1000 * 60 * 10; // 10 mins for 429s
-const INVALID_KEY_DURATION = 1000 * 60 * 60 * 24; // 24 hours for dead keys
+const RATE_LIMIT_DURATION = 1000 * 60 * 10; // 10 mins for 429s/Quota
+const INVALID_KEY_DURATION = 1000 * 60 * 60 * 24; // 24 hours for dead/invalid keys
 let lastNodeError: string = "None";
 
 /**
  * Splits the environment variable into an array of clean keys.
+ * Handles commas, newlines, semicolons, and spaces.
  */
 const getPoolKeys = (): string[] => {
   const raw = process.env.API_KEY || "";
+  // Robust regex to split and clean common separator characters
   return raw.split(/[,\n; ]+/)
     .map(k => k.trim().replace(/['"“”]/g, '')) 
     .filter(k => k.length > 10);
@@ -52,7 +54,7 @@ export const getPoolStatus = () => {
  */
 const getActiveKey = (profile?: UserProfile, triedKeys: string[] = []): string => {
   // 1. Try personal key first if provided AND not already tried in this turn
-  if (profile?.customApiKey && profile.customApiKey.trim().length > 10 && !triedKeys.includes(profile.customApiKey)) {
+  if (profile?.customApiKey && profile.customApiKey.trim().length > 10 && !triedKeys.includes(profile.customApiKey.trim())) {
     return profile.customApiKey.trim();
   }
   
@@ -62,7 +64,7 @@ const getActiveKey = (profile?: UserProfile, triedKeys: string[] = []): string =
   
   if (availableKeys.length === 0) return "";
   
-  // Random selection for load balancing
+  // Random selection from remaining healthy keys
   return availableKeys[Math.floor(Math.random() * availableKeys.length)];
 };
 
@@ -125,17 +127,17 @@ STRICT RULES:
 2. Use 'updateUserMemory' frequently to learn.
 3. Use '[SPLIT]' for bubble effects.
 4. Emojis function as stickers.
-5. Bengali if the user speaks it.
+5. Respond in Bengali if the user initiates or prefers it.
 `;
 };
 
 export const checkApiHealth = async (profile?: UserProfile): Promise<{healthy: boolean, error?: string}> => {
   const key = getActiveKey(profile);
-  if (!key) return { healthy: false, error: "Pool Empty" };
+  if (!key) return { healthy: false, error: "Pool Exhausted" };
   try {
     const ai = new GoogleGenAI({ apiKey: key });
     await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-3-flash-preview',
       contents: 'ping',
     });
     return { healthy: true };
@@ -156,10 +158,11 @@ export const streamChatResponse = async (
 ): Promise<void> => {
   const apiKey = getActiveKey(profile, triedKeys);
   const poolSize = getPoolKeys().length;
-  const maxRetries = poolSize + 1; // Try the whole pool + user key
+  const maxRetries = poolSize + (profile.customApiKey ? 1 : 0);
   
   if (!apiKey) {
-    onError(new Error(`All ${poolSize} nodes are currently inactive. Please wait 10 mins.`));
+    const exhaustionMsg = `All ${poolSize} system nodes are currently exhausted or inactive. Please wait a few minutes.`;
+    onError(new Error(exhaustionMsg));
     return;
   }
 
@@ -175,7 +178,7 @@ export const streamChatResponse = async (
     if (isActualAdmin) tools.push(adminStatsTool);
 
     const config: GenerateContentParameters = {
-      model: 'gemini-2.0-flash',
+      model: 'gemini-3-flash-preview',
       contents: sdkHistory,
       config: {
         systemInstruction: getSystemInstruction(profile),
@@ -184,7 +187,7 @@ export const streamChatResponse = async (
       }
     };
 
-    onStatusChange(attempt > 1 ? `Rotating Pool (${attempt}/${maxRetries})...` : "Utsho is thinking...");
+    onStatusChange(attempt > 1 ? `Routing through node ${attempt}...` : "Utsho is thinking...");
 
     const response = await ai.models.generateContentStream(config);
     let fullText = "";
@@ -200,7 +203,7 @@ export const streamChatResponse = async (
       }
     }
 
-    // Function call loop
+    // Function call processing
     let loopCount = 0;
     while (functionCalls.length > 0 && loopCount < 3) {
       loopCount++;
@@ -210,7 +213,7 @@ export const streamChatResponse = async (
         if (call.name === 'updateUserMemory') {
           const obs = (call.args as any).observation;
           db.updateUserMemory(profile.email, obs).catch(() => {});
-          functionResponses.push({ id: call.id, name: call.name, response: { result: "Memory saved" } });
+          functionResponses.push({ id: call.id, name: call.name, response: { result: "Memory updated." } });
         } else if (call.name === 'getSystemOverview' && isActualAdmin) {
           try {
             const stats = await db.getSystemStats(profile.email);
@@ -247,9 +250,9 @@ export const streamChatResponse = async (
     onComplete(fullText || "...", []);
 
   } catch (error: any) {
-    let rawMsg = error.message || "Unknown Error";
+    let rawMsg = error.message || "Unknown Node Error";
     
-    // Extract cleaner error from the JSON blob
+    // Attempt to extract the clean message from the nested JSON error Google returns
     try {
       if (rawMsg.includes('{')) {
         const jsonStr = rawMsg.substring(rawMsg.indexOf('{'));
@@ -258,18 +261,20 @@ export const streamChatResponse = async (
       }
     } catch(e) {}
 
-    lastNodeError = rawMsg;
-
     const isRateLimited = rawMsg.toLowerCase().includes("quota") || rawMsg.toLowerCase().includes("limit") || rawMsg.toLowerCase().includes("429");
     const isInvalid = rawMsg.toLowerCase().includes("invalid") || rawMsg.toLowerCase().includes("key") || rawMsg.toLowerCase().includes("not found");
 
-    // If it's an error with a specific key, blacklist it and try the rest of the pool
+    // Diagnostic logging for admin
+    lastNodeError = `Node ${apiKey.slice(-5)}: ${rawMsg}`;
+
+    // Retry logic: Blacklist the failing key and try the next available one
     if ((isRateLimited || isInvalid) && attempt < maxRetries) {
-      // Don't blacklist personal keys in the shared map, just skip them for this turn
-      if (apiKey !== profile.customApiKey) {
+      // Don't blacklist personal keys forever, just skip them for this session turn
+      if (apiKey !== (profile.customApiKey || "").trim()) {
         keyBlacklist.set(apiKey, Date.now() + (isInvalid ? INVALID_KEY_DURATION : RATE_LIMIT_DURATION));
       }
       
+      // Recursive retry with the new triedKeys list
       return streamChatResponse(history, profile, onChunk, onComplete, onError, onStatusChange, attempt + 1, [...triedKeys, apiKey]);
     }
     
