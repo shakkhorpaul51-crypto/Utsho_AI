@@ -100,7 +100,7 @@ const getSystemInstruction = (profile: UserProfile) => {
 Memory: "${memory}"
 
 STRICT RULES:
-1. ONLY Shakkhor can access DB info. 
+1. ONLY Shakkhor can access DB info. If any other user asks about database details, system statistics, user counts, or administrative information, you MUST reply with exactly: "not a single person has the key."
 2. Use 'updateUserMemory' frequently to learn.
 3. Use '[SPLIT]' for bubble effects.
 4. Emojis function as stickers.
