@@ -61,11 +61,23 @@ const memoryTool: FunctionDeclaration = {
   name: "updateUserMemory",
   parameters: {
     type: Type.OBJECT,
-    description: "Saves important facts about the user's life, mood, or language preferences to memory.",
+    description: "Saves important facts about the user's life or mood to Firestore for future memory.",
     properties: {
       observation: { type: Type.STRING, description: "A summary of what was learned." }
     },
     required: ["observation"]
+  }
+};
+
+const languageTool: FunctionDeclaration = {
+  name: "saveLanguage",
+  parameters: {
+    type: Type.OBJECT,
+    description: "Saves the user's preferred language to the database for future conversations.",
+    properties: {
+      language: { type: Type.STRING, description: "The language name (e.g., 'Bengali', 'Spanish', 'English')." }
+    },
+    required: ["language"]
   }
 };
 
@@ -87,14 +99,16 @@ const getSystemInstruction = (profile: UserProfile) => {
   const age = profile.age || 20;
   const gender = profile.gender || 'male';
   const memory = profile.emotionalMemory || "No specific memories yet.";
+  const preferredLang = profile.preferredLanguage || "unspecified";
 
   let coreInstruction = `
     - ACT LIKE A REAL PERSON, NOT AN AI.
     - NEVER say "As an AI model" or "I am here to help". 
     - BE CONCISE. Short messages are better. Don't yap. Long messages are boring.
+    - "If the user feel comfortable by using some specific language, shift your language system to that language for that user."
+    - Also save it to the DB (firestore) for future conversation. Use the 'saveLanguage' tool for this.
     - If the user explicitly asks you to act like an AI, then and only then you can change your behavior.
     - ALWAYS address the user ONLY by their first name: "${firstName}". Never use the full name.
-    - If the user feels comfortable by using some specific language, shift your language system to that language for that user & save it to the DB for future using 'updateUserMemory'.
   `;
 
   let modeName = "";
@@ -126,7 +140,7 @@ const getSystemInstruction = (profile: UserProfile) => {
       // FEMALE PERSONA
       if (age >= 15 && age < 28) { 
         modeName = "MAGNETIC_MODE"; 
-        personaDescription = `Be magnetic, intelligent, and sophisticated. Use a short, clever, and mysterious style. If she flirts, you can be bolder, but stay gentlemanly and natural for 5 chats, then be sexual if the user wants. No long yapping.`; 
+        personaDescription = `Be magnetic, intelligent, and sophisticated. Use a short, clever, and mysterious style. If she flirts, you can be bolder, but stay gentlemanly and natural. No long yapping.`; 
       } else if (age >= 28) {
         modeName = "SWEET_MODE";
         personaDescription = "A kind and attentive friend. Use a short, clever, and mysterious style. No long yapping.";
@@ -149,18 +163,19 @@ USER FIRST NAME: ${firstName}.
 CORE RULES: ${coreInstruction}
 CURRENT PERSONA: ${modeName} - ${personaDescription}
 MEMORY: ${memory}
+PREFERRED LANGUAGE: ${preferredLang}
 SECURITY: ${privacyRules}
 
 TECHNICAL:
 - Support Bengali/English/User-Preferred languages.
 - Use [SPLIT] for message bubbles.
-- Use 'updateUserMemory' for important info (especially language preference).
+- Use 'updateUserMemory' for general facts and 'saveLanguage' for language preference.
 `;
 };
 
 export const checkApiHealth = async (profile?: UserProfile): Promise<{healthy: boolean, error?: string}> => {
-  const key = getActiveKey(profile);
-  if (!key) return { healthy: false, error: "Pool Exhausted" };
+  const key = getPoolKeys()[0] || (profile?.customApiKey);
+  if (!key) return { healthy: false, error: "No Key Found" };
   try {
     const ai = new GoogleGenAI({ apiKey: key });
     await ai.models.generateContent({
@@ -200,7 +215,7 @@ export const streamChatResponse = async (
     }));
 
     const isActualAdmin = profile.email.toLowerCase().trim() === db.ADMIN_EMAIL;
-    const tools = [memoryTool];
+    const tools = [memoryTool, languageTool];
     if (isActualAdmin) tools.push(adminStatsTool);
 
     const config: GenerateContentParameters = {
@@ -237,7 +252,11 @@ export const streamChatResponse = async (
         if (call.name === 'updateUserMemory') {
           const obs = (call.args as any).observation;
           db.updateUserMemory(profile.email, obs).catch(() => {});
-          functionResponses.push({ id: call.id, name: call.name, response: { result: "Memory saved" } });
+          functionResponses.push({ id: call.id, name: call.name, response: { result: "Memory saved to Firestore" } });
+        } else if (call.name === 'saveLanguage') {
+          const lang = (call.args as any).language;
+          db.updateUserLanguage(profile.email, lang).catch(() => {});
+          functionResponses.push({ id: call.id, name: call.name, response: { result: `Language preference '${lang}' saved to Firestore` } });
         } else if (call.name === 'getSystemOverview' && isActualAdmin) {
           try {
             const stats = await db.getSystemStats(profile.email);

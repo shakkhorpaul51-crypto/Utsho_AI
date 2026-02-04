@@ -10,7 +10,8 @@ export interface UserProfile {
   age: number;
   googleId?: string;
   customApiKey?: string;
-  emotionalMemory?: string; // New: Stores AI's long-term observations
+  emotionalMemory?: string; 
+  preferredLanguage?: string; // New: Persistent language preference
 }
 
 export interface Message {

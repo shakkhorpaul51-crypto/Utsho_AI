@@ -120,8 +120,15 @@ export const saveUserProfile = async (profile: UserProfile) => {
     picture: profile.picture,
     googleId: profile.googleId || '',
     customApiKey: profile.customApiKey || '',
-    emotionalMemory: profile.emotionalMemory || ''
+    emotionalMemory: profile.emotionalMemory || '',
+    preferredLanguage: profile.preferredLanguage || ''
   }, { merge: true });
+};
+
+export const updateUserLanguage = async (email: string, language: string) => {
+  if (!db || !email) return;
+  const userRef = doc(db, 'users', email.toLowerCase());
+  await setDoc(userRef, { preferredLanguage: language }, { merge: true });
 };
 
 export const updateUserMemory = async (email: string, memoryUpdate: string) => {
