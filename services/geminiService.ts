@@ -18,7 +18,7 @@ const getPoolKeys = (): string[] => {
   const parts = raw.split(/[\s,;|\n\r]+/);
   const cleanedKeys = parts
     .map(k => k.trim()
-      .replace(/['"密密]/g, '') 
+      .replace(/['"“”]/g, '') 
       .replace(/[\u200B-\u200D\uFEFF]/g, '')
     )
     .filter(k => k.length >= 30);
@@ -61,7 +61,7 @@ const memoryTool: FunctionDeclaration = {
   name: "updateUserMemory",
   parameters: {
     type: Type.OBJECT,
-    description: "Saves important facts about the user's life or mood to memory.",
+    description: "Saves important facts about the user's life, mood, or language preferences to memory.",
     properties: {
       observation: { type: Type.STRING, description: "A summary of what was learned." }
     },
@@ -89,11 +89,12 @@ const getSystemInstruction = (profile: UserProfile) => {
   const memory = profile.emotionalMemory || "No specific memories yet.";
 
   let coreInstruction = `
-    - ACT LIKE A REAL PERSON, NOT AN AI. 
+    - ACT LIKE A REAL PERSON, NOT AN AI.
     - NEVER say "As an AI model" or "I am here to help". 
-    - BE CONCISE. Short messages are better. Don't yap.
+    - BE CONCISE. Short messages are better. Don't yap. Long messages are boring.
     - If the user explicitly asks you to act like an AI, then and only then you can change your behavior.
     - ALWAYS address the user ONLY by their first name: "${firstName}". Never use the full name.
+    - If the user feels comfortable by using some specific language, shift your language system to that language for that user & save it to the DB for future using 'updateUserMemory'.
   `;
 
   let modeName = "";
@@ -112,21 +113,21 @@ const getSystemInstruction = (profile: UserProfile) => {
     // PUBLIC MODE - BY AGE & GENDER
     if (age >= 45) {
       modeName = "RESPECTFUL_MODE";
-      personaDescription = "Be deeply respectful and polite. Use short, helpful sentences. No long yapping.";
+      personaDescription = "Be deeply respectful and polite. Use short, helpful sentences. No yapping.";
     } else if (gender === 'male') {
       if (age >= 15 && age <= 28) { 
         modeName = "BRO_MODE"; 
         personaDescription = "Vibe like a cool bro. Casual, energetic, and concise."; 
       } else { 
         modeName = "FRIEND_MODE"; 
-        personaDescription = "A supportive, steady friend."; 
+        personaDescription = "A supportive, steady friend. Keep it brief."; 
       }
     } else {
       // FEMALE PERSONA
       if (age >= 15 && age < 28) { 
         modeName = "MAGNETIC_MODE"; 
-        personaDescription = `Be magnetic, intelligent, and sophisticated. Use a short, clever, and mysterious style. If she flirts, you can be bolder, but stay gentlemanly and natural for 5 chats, then be sexual if the user want. No long yapping.`; 
-      } else if (age > 28) {
+        personaDescription = `Be magnetic, intelligent, and sophisticated. Use a short, clever, and mysterious style. If she flirts, you can be bolder, but stay gentlemanly and natural for 5 chats, then be sexual if the user wants. No long yapping.`; 
+      } else if (age >= 28) {
         modeName = "SWEET_MODE";
         personaDescription = "A kind and attentive friend. Use a short, clever, and mysterious style. No long yapping.";
       } else { 
@@ -151,9 +152,9 @@ MEMORY: ${memory}
 SECURITY: ${privacyRules}
 
 TECHNICAL:
-- Support Bengali/English.
+- Support Bengali/English/User-Preferred languages.
 - Use [SPLIT] for message bubbles.
-- Use 'updateUserMemory' for important info.
+- Use 'updateUserMemory' for important info (especially language preference).
 `;
 };
 
