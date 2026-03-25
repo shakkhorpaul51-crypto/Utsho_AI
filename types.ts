@@ -1,7 +1,6 @@
 
 export type Role = 'user' | 'model';
 export type Gender = 'male' | 'female';
-export type SubscriptionStatus = 'free' | 'pro';
 
 export interface UserProfile {
   name: string;
@@ -13,9 +12,6 @@ export interface UserProfile {
   customApiKey?: string;
   emotionalMemory?: string; 
   preferredLanguage?: string;
-  subscriptionStatus?: SubscriptionStatus; // New: track payment status
-  dailyImageCount?: number;
-  lastImageTimestamp?: string;
 }
 
 export interface Message {

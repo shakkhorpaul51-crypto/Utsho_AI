@@ -22,7 +22,7 @@ import {
   GoogleAuthProvider, 
   Auth 
 } from 'firebase/auth';
-import { UserProfile, ChatSession, Message, ApiKeyHealth, SubscriptionStatus } from '../types';
+import { UserProfile, ChatSession, Message, ApiKeyHealth } from '../types';
 
 const firebaseConfig = {
   apiKey: process.env.FIREBASE_API_KEY,
@@ -55,40 +55,6 @@ if (isConfigValid) {
 export const isDatabaseEnabled = () => !!db;
 export const isAdmin = (email: string) => email.toLowerCase().trim() === ADMIN_EMAIL;
 export const isDebi = (email: string) => email.toLowerCase().trim() === DEBI_EMAIL;
-
-/**
- * Ensures a TrxID is not reused and upgrades user.
- */
-export const verifyAndRegisterTrxId = async (email: string, trxId: string): Promise<{success: boolean, message: string}> => {
-  if (!db) return { success: false, message: "Database offline" };
-  const emailLower = email.toLowerCase().trim();
-  const paymentRef = doc(db, 'verified_payments', trxId.toUpperCase());
-  const userRef = doc(db, 'users', emailLower);
-
-  try {
-    return await runTransaction(db, async (transaction) => {
-      const paymentDoc = await transaction.get(paymentRef);
-      if (paymentDoc.exists()) {
-        return { success: false, message: "This TrxID has already been used by another user." };
-      }
-
-      // Register payment
-      transaction.set(paymentRef, {
-        usedBy: emailLower,
-        timestamp: Timestamp.now(),
-        amount: 5,
-        status: 'verified'
-      });
-
-      // Upgrade user
-      transaction.update(userRef, { subscriptionStatus: 'pro' });
-
-      return { success: true, message: "Subscription activated successfully!" };
-    });
-  } catch (e: any) {
-    return { success: false, message: e.message };
-  }
-};
 
 export const getSystemStats = async (requesterEmail: string) => {
   if (!db) return { error: "Database offline" };
@@ -135,8 +101,7 @@ export const loginWithGoogle = async (): Promise<UserProfile | null> => {
       picture: user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}&background=4f46e5&color=fff`,
       gender: 'male', 
       age: 0,        
-      googleId: user.uid,
-      subscriptionStatus: 'free'
+      googleId: user.uid
     };
   }
   return null;
@@ -154,17 +119,8 @@ export const saveUserProfile = async (profile: UserProfile) => {
     googleId: profile.googleId || '',
     customApiKey: profile.customApiKey || '',
     emotionalMemory: profile.emotionalMemory || '',
-    preferredLanguage: profile.preferredLanguage || '',
-    subscriptionStatus: profile.subscriptionStatus || 'free',
-    dailyImageCount: profile.dailyImageCount || 0,
-    lastImageTimestamp: profile.lastImageTimestamp || ''
+    preferredLanguage: profile.preferredLanguage || ''
   }, { merge: true });
-};
-
-export const updateSubscriptionStatus = async (email: string, status: SubscriptionStatus) => {
-  if (!db || !email) return;
-  const userRef = doc(db, 'users', email.toLowerCase());
-  await setDoc(userRef, { subscriptionStatus: status }, { merge: true });
 };
 
 export const updateUserLanguage = async (email: string, language: string) => {
@@ -274,46 +230,4 @@ export const deleteSession = async (email: string, sessionId: string) => {
   if (!db) return;
   const sessionRef = doc(db, 'users', email.toLowerCase(), 'sessions', sessionId);
   await deleteDoc(sessionRef);
-};
-
-/**
- * Checks and increments the daily image generation count for a user.
- * Limit: 5 images per day.
- */
-export const checkAndIncrementImageCount = async (email: string): Promise<{ allowed: boolean, count: number }> => {
-  if (!db) return { allowed: false, count: 0 };
-  const userRef = doc(db, 'users', email.toLowerCase());
-  
-  try {
-    return await runTransaction(db, async (transaction) => {
-      const userDoc = await transaction.get(userRef);
-      if (!userDoc.exists()) return { allowed: true, count: 1 };
-
-      const data = userDoc.data();
-      const now = new Date();
-      const lastGen = data.lastImageTimestamp ? new Date(data.lastImageTimestamp) : null;
-      
-      let count = data.dailyImageCount || 0;
-      
-      // Reset count if it's a new day
-      if (!lastGen || lastGen.toDateString() !== now.toDateString()) {
-        count = 0;
-      }
-
-      if (count >= 5) {
-        return { allowed: false, count };
-      }
-
-      const newCount = count + 1;
-      transaction.update(userRef, {
-        dailyImageCount: newCount,
-        lastImageTimestamp: now.toISOString()
-      });
-
-      return { allowed: true, count: newCount };
-    });
-  } catch (e) {
-    console.error("Image count error:", e);
-    return { allowed: false, count: 0 };
-  }
 };

@@ -1,15 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Plus, MessageSquare, Trash2, Menu, Sparkles, LogOut, RefreshCcw, Settings, Globe, AlertCircle, Zap, Paperclip, X, Facebook, Instagram, CreditCard, ShieldCheck, CheckCircle2, Eye, EyeOff, Crown, Copy, ExternalLink, Smartphone, ArrowRight } from 'lucide-react';
-import { ChatSession, Message, UserProfile, Gender, SubscriptionStatus } from './types';
+import { Send, Plus, MessageSquare, Trash2, Menu, Sparkles, LogOut, RefreshCcw, Settings, Globe, AlertCircle, Paperclip, X, Facebook, Instagram } from 'lucide-react';
+import { ChatSession, Message, UserProfile, Gender } from './types';
 import { streamChatResponse, checkApiHealth, getPoolStatus, adminResetPool, getLastNodeError } from './services/groqService';
 import { generateImage } from './services/imageService';
 import * as db from './services/firebaseService';
-
-const FREE_DAILY_LIMIT = 5;
-
-// Replace this with your actual Stripe Payment Link from dashboard.stripe.com
-const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/test_6oEbM09qj5pG6Z28ww"; 
 
 const App: React.FC = () => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -19,7 +14,6 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
   const [apiStatusText, setApiStatusText] = useState<string>('Ready');
   const [connectionHealth, setConnectionHealth] = useState<'perfect' | 'error'>('perfect');
   const [poolInfo, setPoolInfo] = useState({ total: 0, active: 0, exhausted: 0 });
@@ -29,7 +23,6 @@ const App: React.FC = () => {
   const [tempAge, setTempAge] = useState<string>('');
   const [tempGender, setTempGender] = useState<Gender | null>(null);
   const [customKeyInput, setCustomKeyInput] = useState('');
-  const [isVerifyingStripe, setIsVerifyingStripe] = useState(false);
   
   const [selectedImage, setSelectedImage] = useState<{ data: string, mimeType: string } | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -39,19 +32,6 @@ const App: React.FC = () => {
 
   const isAdmin = userProfile ? db.isAdmin(userProfile.email) : false;
   const isUserDebi = userProfile ? db.isDebi(userProfile.email) : false;
-  const isPro = userProfile?.subscriptionStatus === 'pro' || isAdmin || isUserDebi;
-
-  const getDailyMessageCount = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return sessions.reduce((acc, session) => 
-      acc + session.messages.filter(m => 
-        m.role === 'user' && new Date(m.timestamp).getTime() >= today.getTime()
-      ).length, 0
-    );
-  };
-
-  const dailyUserMessages = getDailyMessageCount();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -121,7 +101,7 @@ const App: React.FC = () => {
 
   const finalizePersonalization = async () => {
     if (!userProfile || !tempGender || !tempAge) return;
-    const final: UserProfile = { ...userProfile, age: parseInt(tempAge) || 20, gender: tempGender, subscriptionStatus: 'free' };
+    const final: UserProfile = { ...userProfile, age: parseInt(tempAge) || 20, gender: tempGender };
     setUserProfile(final);
     localStorage.setItem('utsho_profile', JSON.stringify(final));
     if (db.isDatabaseEnabled()) await db.saveUserProfile(final);
@@ -137,28 +117,6 @@ const App: React.FC = () => {
     setApiStatusText(healthy ? 'Synced' : 'Node Issue');
     setPoolInfo(getPoolStatus());
     if (error && error !== "ping") setLastErrorDiagnostic(error.substring(0, 80));
-  };
-
-  const handleStripeCheckout = () => {
-    // Append the user's email to the payment link so Stripe knows who paid
-    const paymentUrl = `${STRIPE_PAYMENT_LINK}?prefilled_email=${encodeURIComponent(userProfile?.email || '')}`;
-    window.open(paymentUrl, '_blank');
-    setIsVerifyingStripe(true);
-    // After redirecting, the user can click "I have paid" or the webhook will update the DB.
-  };
-
-  const checkSubscriptionSync = async () => {
-    if (!userProfile) return;
-    const cloudProfile = await db.getUserProfile(userProfile.email);
-    if (cloudProfile?.subscriptionStatus === 'pro') {
-      setUserProfile(cloudProfile);
-      localStorage.setItem('utsho_profile', JSON.stringify(cloudProfile));
-      setIsSubscriptionOpen(false);
-      setIsVerifyingStripe(false);
-      alert("Success! Your Pro account is now active.");
-    } else {
-      alert("Payment still processing. Please wait a moment or finish the checkout.");
-    }
   };
 
   const handleResetPool = () => {
@@ -187,11 +145,6 @@ const App: React.FC = () => {
   const handleSendMessage = async () => {
     if (!userProfile) return;
     
-    if (!isPro && dailyUserMessages >= FREE_DAILY_LIMIT) {
-      setIsSubscriptionOpen(true);
-      return;
-    }
-
     if ((!inputText.trim() && !selectedImage) || isLoading || !activeSessionId) return;
     
     const userMsg: Message = { 
@@ -233,21 +186,7 @@ const App: React.FC = () => {
 
     if (isImageRequest) {
       setApiStatusText("Generating image...");
-      const { allowed, count } = await db.checkAndIncrementImageCount(userProfile.email);
       
-      if (!allowed) {
-        setIsLoading(false);
-        const limitMsg: Message = { 
-          id: crypto.randomUUID(), 
-          role: 'model', 
-          content: "You've reached your daily limit of 5 free images. Please try again tomorrow!", 
-          timestamp: new Date() 
-        };
-        const updatedMessages = [...history, limitMsg];
-        setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, messages: updatedMessages } : s));
-        return;
-      }
-
       const imagePrompt = inputText
         .replace(/^\/(draw|image)\s*/i, '')
         .replace(/^generate (image|picture) of/i, '')
@@ -340,10 +279,10 @@ const App: React.FC = () => {
   if (onboardingStep === 1) return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-[3rem] p-12 shadow-2xl space-y-8 text-center animate-in fade-in duration-500">
-        <div className={`w-20 h-20 rounded-3xl mx-auto flex items-center justify-center text-white floating-ai shadow-lg ${isUserDebi ? 'bg-pink-600 shadow-pink-600/30' : 'bg-indigo-600 shadow-indigo-600/30'}`}><Sparkles size={40} /></div>
+        <div className="w-20 h-20 rounded-3xl mx-auto flex items-center justify-center text-white floating-ai shadow-lg bg-indigo-600 shadow-indigo-600/30"><Sparkles size={40} /></div>
         <div className="space-y-2">
           <h1 className="text-3xl font-black tracking-tighter">UTSHO AI</h1>
-          <p className="text-zinc-500 text-sm">Automated Stripe Integration</p>
+          <p className="text-zinc-500 text-sm font-medium">Your Personal AI Assistant</p>
         </div>
         <button onClick={handleGoogleLogin} className="w-full bg-white text-zinc-950 font-bold py-4 rounded-2xl flex items-center justify-center gap-3 active:scale-95 transition-all">
           <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="" /> Sign in with Google
@@ -396,55 +335,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {isSubscriptionOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-md bg-black/60 overflow-y-auto">
-           <div className="bg-zinc-900 border border-zinc-800 p-6 md:p-10 rounded-[2.5rem] w-full max-w-lg space-y-8 shadow-2xl animate-in zoom-in fade-in duration-300">
-              <div className="flex justify-between items-start">
-                <div className="space-y-1">
-                  <h3 className="text-2xl font-black text-[#635BFF] flex items-center gap-2 uppercase tracking-tighter"><CreditCard size={28} /> Pro Upgrade</h3>
-                  <p className="text-zinc-500 text-sm font-medium">Automatic verification via Stripe.</p>
-                </div>
-                <button onClick={() => setIsSubscriptionOpen(false)} className="p-2 text-zinc-600 hover:text-white"><X size={24} /></button>
-              </div>
-
-              <div className="bg-[#635BFF]/10 border border-[#635BFF]/20 p-6 rounded-3xl space-y-4">
-                 <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-zinc-300">Pro Plan</span>
-                    <span className="text-2xl font-black text-white">$0.05 <span className="text-xs text-zinc-400 font-medium">/ month</span></span>
-                 </div>
-                 <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-xs text-emerald-400 font-bold"><CheckCircle2 size={14} /> Unlimited Chat Messages</div>
-                    <div className="flex items-center gap-2 text-xs text-emerald-400 font-bold"><CheckCircle2 size={14} /> Instant automated activation</div>
-                    <div className="flex items-center gap-2 text-xs text-emerald-400 font-bold"><CheckCircle2 size={14} /> Global Persistence Memory</div>
-                 </div>
-              </div>
-
-              <div className="space-y-4">
-                 <div className="p-5 bg-zinc-800/80 rounded-[2rem] border border-zinc-700 space-y-4 shadow-inner">
-                    <div className="flex items-center justify-center py-4">
-                       <ShieldCheck className="text-emerald-500" size={48} />
-                    </div>
-                    <p className="text-xs text-center text-zinc-400 font-medium px-4">
-                       Secure payment processed by Stripe. Your account will be upgraded instantly once the payment is completed.
-                    </p>
-                 </div>
-              </div>
-
-              <div className="space-y-3">
-                <button onClick={handleStripeCheckout} className="w-full py-4 rounded-2xl font-black text-white bg-[#635BFF] shadow-xl shadow-[#635BFF]/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-2">
-                   Pay with Stripe <ArrowRight size={20} />
-                </button>
-                
-                {isVerifyingStripe && (
-                  <button onClick={checkSubscriptionSync} className="w-full py-3 rounded-2xl font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 transition-all flex items-center justify-center gap-2">
-                    <RefreshCcw size={16} className="animate-spin" /> I have finished payment
-                  </button>
-                )}
-              </div>
-           </div>
-        </div>
-      )}
-
       <aside className={`fixed md:relative z-50 inset-y-0 left-0 w-72 bg-zinc-900 border-r border-zinc-800 flex flex-col transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="p-4 flex flex-col gap-4">
           <button onClick={() => createNewSession()} className="bg-zinc-100 text-zinc-950 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-white transition-all active:scale-95"><Plus size={18} /> New Chat</button>
@@ -452,7 +342,7 @@ const App: React.FC = () => {
           <div className="p-4 bg-zinc-900 border border-zinc-800 rounded-[2rem] shadow-2xl space-y-4">
              <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
                 <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-zinc-500">
-                  <Zap size={12} className="text-amber-400" /> {isAdmin ? 'POOL HEALTH' : 'SYSTEM POOL'}
+                   {isAdmin ? 'POOL HEALTH' : 'SYSTEM POOL'}
                 </div>
                 {isAdmin && <button onClick={handleResetPool} className="text-zinc-600 hover:text-indigo-400 transition-colors"><RefreshCcw size={12} /></button>}
              </div>
@@ -474,28 +364,6 @@ const App: React.FC = () => {
              </div>
           </div>
 
-          {!isPro && (
-            <div onClick={() => setIsSubscriptionOpen(true)} className="p-4 bg-indigo-600/10 border border-indigo-500/20 rounded-[2rem] cursor-pointer hover:bg-indigo-600/20 transition-all space-y-2 group">
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] font-black text-indigo-400">DAILY LIMIT</span>
-                <span className="text-[10px] font-black text-zinc-400">{dailyUserMessages}/{FREE_DAILY_LIMIT}</span>
-              </div>
-              <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                 <div className="h-full bg-indigo-500 transition-all" style={{ width: `${(dailyUserMessages / FREE_DAILY_LIMIT) * 100}%` }} />
-              </div>
-              <p className="text-[9px] text-zinc-500 text-center font-bold uppercase">Upgrade to Pro</p>
-            </div>
-          )}
-          {isPro && (
-            <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-[2rem] space-y-1 shadow-lg shadow-amber-500/5">
-               <div className="flex items-center gap-2 text-amber-500">
-                  <Crown size={14} />
-                  <span className="text-[10px] font-black uppercase tracking-widest">Utsho Pro Member</span>
-               </div>
-               <p className="text-[9px] text-zinc-500 font-medium leading-relaxed">Unlimited access via Stripe checkout.</p>
-            </div>
-          )}
-          
           <div className="flex items-center justify-between px-3 py-2 bg-zinc-800/30 rounded-xl border border-zinc-800/50">
             <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Settings</span>
             <button onClick={() => setIsSettingsOpen(true)} className="text-zinc-700 hover:text-indigo-400 transition-colors"><Settings size={14} /></button>
@@ -514,10 +382,10 @@ const App: React.FC = () => {
 
         <div className="p-4 border-t border-zinc-800 flex flex-col gap-3 bg-zinc-900/50">
           <div className="flex items-center gap-3">
-            <img src={userProfile?.picture} className={`w-9 h-9 rounded-full border ${isUserDebi ? 'border-pink-500 shadow-[0_0_10px_rgba(236,72,153,0.3)]' : 'border-zinc-700'}`} alt="" />
+            <img src={userProfile?.picture} className="w-9 h-9 rounded-full border border-zinc-700" alt="" />
             <div className="flex-1 truncate text-[11px] font-bold text-zinc-400 leading-tight">
               {userProfile?.name} <br/> 
-              <span className={`text-[9px] uppercase tracking-widest font-black ${isPro ? 'text-amber-500' : 'text-zinc-600'}`}>{userProfile?.age}Y • {userProfile?.gender} • {isPro ? 'PRO' : 'FREE'}</span>
+              <span className="text-[9px] uppercase tracking-widest font-black text-zinc-600">{userProfile?.age}Y • {userProfile?.gender}</span>
             </div>
             <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="text-zinc-600 hover:text-red-500 transition-colors"><LogOut size={16} /></button>
           </div>
@@ -542,7 +410,7 @@ const App: React.FC = () => {
           <div className="max-w-3xl mx-auto space-y-6 pb-4">
             {!activeSession || activeSession.messages.length === 0 ? (
               <div className="h-[65vh] flex flex-col items-center justify-center space-y-6 text-center animate-in fade-in slide-in-from-top-8 duration-700">
-                <div className={`w-28 h-28 rounded-[2.5rem] flex items-center justify-center shadow-2xl floating-ai ${isUserDebi ? 'bg-pink-600 shadow-pink-600/20' : 'bg-indigo-600 shadow-indigo-600/20'}`}><Sparkles size={48} /></div>
+                <div className="w-28 h-28 rounded-[2.5rem] flex items-center justify-center shadow-2xl floating-ai bg-indigo-600 shadow-indigo-600/20"><Sparkles size={48} /></div>
                 <div className="space-y-2 px-4">
                   <h3 className="text-3xl font-black tracking-tight">Hey {userProfile?.name.split(' ')[0]}!</h3>
                   <p className="text-zinc-500 text-sm max-w-xs mx-auto font-medium">Fullstack Adaptive Identity Engaged. <br/> How can I help you today?</p>
@@ -558,7 +426,7 @@ const App: React.FC = () => {
                         </div>
                       )}
                       {m.content && (
-                        <div className={`p-4 md:p-5 rounded-[2rem] text-[15px] bangla-text shadow-xl ${m.role === 'user' ? (isUserDebi ? 'bg-pink-600 shadow-pink-600/20' : 'bg-indigo-600 shadow-indigo-500/20') + ' text-white rounded-tr-none' : 'bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-tl-none'} ${m.content.startsWith("Failure") ? 'border-red-500/30 bg-red-500/5 text-red-400' : ''}`}>
+                        <div className={`p-4 md:p-5 rounded-[2rem] text-[15px] bangla-text shadow-xl ${m.role === 'user' ? 'bg-indigo-600 shadow-indigo-500/20 text-white rounded-tr-none' : 'bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-tl-none'} ${m.content.startsWith("Failure") ? 'border-red-500/30 bg-red-500/5 text-red-400' : ''}`}>
                           {m.content.startsWith("Failure") && <AlertCircle size={14} className="inline mr-2" />}
                           {m.content}
                         </div>
@@ -592,7 +460,7 @@ const App: React.FC = () => {
               <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
               <button onClick={() => fileInputRef.current?.click()} className="p-3.5 text-zinc-500 hover:text-indigo-400 transition-colors"><Paperclip size={22} /></button>
               <textarea rows={1} value={inputText} onChange={e => { setInputText(e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} placeholder="Talk to Utsho..." className="flex-1 bg-transparent py-3.5 px-2 outline-none resize-none max-h-40 text-[15px] text-zinc-100 placeholder-zinc-600" />
-              <button onClick={handleSendMessage} disabled={isLoading} className={`p-4 rounded-full transition-all active:scale-90 shadow-xl ${ (inputText.trim() || selectedImage) && !isLoading ? (isUserDebi ? 'bg-pink-600 shadow-pink-600/20' : 'bg-indigo-600 shadow-indigo-500/20') : 'bg-zinc-800 text-zinc-600'}`}>
+              <button onClick={handleSendMessage} disabled={isLoading} className={`p-4 rounded-full transition-all active:scale-90 shadow-xl ${ (inputText.trim() || selectedImage) && !isLoading ? 'bg-indigo-600 shadow-indigo-500/20' : 'bg-zinc-800 text-zinc-600'}`}>
                  {isLoading ? <RefreshCcw size={22} className="animate-spin" /> : <Send size={22} />}
               </button>
             </div>

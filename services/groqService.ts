@@ -70,7 +70,6 @@ const getSystemInstruction = (profile: UserProfile) => {
   const firstName = fullName.split(' ')[0];
   const isActualCreator = email === db.ADMIN_EMAIL;
   const isActualDebi = email === db.DEBI_EMAIL;
-  const isPro = profile.subscriptionStatus === 'pro' || isActualCreator || isActualDebi;
   const age = profile.age || 20;
   const gender = profile.gender || 'male';
   const memory = profile.emotionalMemory || "No specific memories yet.";
@@ -87,7 +86,6 @@ const getSystemInstruction = (profile: UserProfile) => {
       4. For Bangla, use ONLY the native script (Bangla alphabet). DO NOT provide an English translation for Bangla.
     - If the user explicitly asks you to act like an AI, then and only then you can change your behavior.
     - ALWAYS address the user ONLY by their first name: "${firstName}".
-    - User Status: ${isPro ? 'PRO/UNLIMITED' : 'FREE/LIMITED'}.
   `;
 
   let modeName = "";
