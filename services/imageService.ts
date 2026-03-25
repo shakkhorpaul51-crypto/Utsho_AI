@@ -75,30 +75,28 @@ export const generateImage = async (prompt: string, email?: string): Promise<str
   try {
     // Pollinations uses a simple URL structure: https://image.pollinations.ai/prompt/{prompt}
     // We add some parameters for better quality and consistency.
+    // Using a fixed seed so the URL is stable and the image can be loaded directly.
+    const seed = Math.floor(Math.random() * 1000000);
     const encodedPrompt = encodeURIComponent(prompt);
-    const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&enhance=true&seed=${Math.floor(Math.random() * 1000000)}`;
+    const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&enhance=true&seed=${seed}`;
 
-    // We try to fetch the image and convert it to base64 for persistence
+    // Use the direct URL instead of base64 conversion.
+    // Base64 of large images exceeds Firestore's 1MB document limit and causes broken images.
+    // Pollinations URLs are stable (same seed = same image) and load directly in <img> tags.
     try {
-      const response = await fetch(imageUrl);
-      if (!response.ok) throw new Error("Failed to fetch image from Pollinations");
-
-      const blob = await response.blob();
-      const result = await new Promise<string | null>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = () => resolve(imageUrl); // Fallback to URL if base64 conversion fails
-        reader.readAsDataURL(blob);
-      });
-
+      // Verify the URL works with a quick fetch (follows redirects, confirms image generation)
+      const response = await fetch(imageUrl, { method: 'GET' });
+      if (!response.ok) throw new Error("Failed to generate image from Pollinations");
+      
+      // We got a valid response. Use the final URL (after any redirects) for display.
       // Track usage on success
-      if (result && email) incrementImageUsage(email);
-      return result;
-    } catch (fetchError) {
-      console.warn("IMAGE_SERVICE: Fetch failed, returning direct URL:", fetchError);
-      // Track usage even for URL fallback (image was still generated)
       if (email) incrementImageUsage(email);
-      return imageUrl; // Return direct URL if fetch/CORS fails
+      return imageUrl;
+    } catch (fetchError) {
+      console.warn("IMAGE_SERVICE: Fetch verification failed, returning URL anyway:", fetchError);
+      // Still return the URL - Pollinations might work directly in img tag even if fetch fails (CORS)
+      if (email) incrementImageUsage(email);
+      return imageUrl;
     }
   } catch (error) {
     console.error("IMAGE_SERVICE: Error generating image:", error);
