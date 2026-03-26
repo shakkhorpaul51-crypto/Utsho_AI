@@ -577,8 +577,12 @@ const App: React.FC = () => {
                   <div className="flex gap-2">
                     <input value={dmNewEmail} onChange={e => { setDmNewEmail(e.target.value); setDmError(''); }} placeholder="Enter user's email to chat..." className="flex-1 px-3 py-2.5 rounded-xl text-sm outline-none border" style={{ backgroundColor: c.bgTertiary, borderColor: c.borderPrimary, color: c.textPrimary }} />
                     <button onClick={async () => {
-                      if (!dmNewEmail.trim() || !dmNewEmail.includes('@')) { setDmError('Enter a valid email'); return; }
+                      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+                      if (!dmNewEmail.trim() || !emailRegex.test(dmNewEmail.trim())) { setDmError('Enter a valid email address'); return; }
                       if (dmNewEmail.toLowerCase().trim() === userProfile!.email.toLowerCase()) { setDmError('Cannot message yourself'); return; }
+                      // Common typo check
+                      const domain = dmNewEmail.split('@')[1]?.toLowerCase();
+                      if (domain && (domain === 'gmai.com' || domain === 'gmial.com' || domain === 'gamil.com' || domain === 'gmal.com')) { setDmError('Did you mean @gmail.com?'); return; }
                       try {
                         setDmChatWith(dmNewEmail.trim().toLowerCase());
                         const msgs = await db.getConversationMessages(userProfile!.email, dmNewEmail.trim());
