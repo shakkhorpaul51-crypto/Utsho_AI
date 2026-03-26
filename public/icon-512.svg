@@ -1,12 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#4f46e5"/>
-  <!-- Large 4-pointed sparkle star (bottom-left area) -->
-  <path d="M212 124 C222 176, 232 200, 288 212 C232 224, 222 236, 212 288 C202 236, 192 224, 136 212 C192 200, 202 176, 212 124Z" fill="white"/>
-  <!-- Small 4-pointed sparkle star (upper-right area) -->
-  <path d="M332 188 C337 210, 342 216, 364 220 C342 224, 337 230, 332 252 C327 230, 322 224, 300 220 C322 216, 327 210, 332 188Z" fill="white"/>
+  <defs>
+    <linearGradient id="bg512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7c6bc4"/>
+      <stop offset="100%" style="stop-color:#6950a8"/>
+    </linearGradient>
+    <!-- Gloss/shine overlay -->
+    <linearGradient id="shine512" x1="0%" y1="0%" x2="60%" y2="60%">
+      <stop offset="0%" style="stop-color:rgba(255,255,255,0.18)"/>
+      <stop offset="100%" style="stop-color:rgba(255,255,255,0)"/>
+    </linearGradient>
+  </defs>
+  <!-- Background rounded square -->
+  <rect width="512" height="512" rx="112" fill="url(#bg512)"/>
+  <!-- Gloss overlay -->
+  <rect width="512" height="512" rx="112" fill="url(#shine512)"/>
+  <!-- Large 4-pointed sparkle star -->
+  <path d="M208 116 C222 176, 240 208, 304 224 C240 240, 222 256, 208 320 C194 256, 176 240, 112 224 C176 208, 194 176, 208 116Z" fill="white"/>
+  <!-- Small 4-pointed sparkle star (upper-right) -->
+  <path d="M336 180 C340 204, 346 212, 374 218 C346 224, 340 232, 336 256 C332 232, 326 224, 298 218 C326 212, 332 204, 336 180Z" fill="white"/>
   <!-- Plus sign (top-right corner) -->
-  <line x1="374" y1="108" x2="374" y2="152" stroke="white" stroke-width="10" stroke-linecap="round"/>
-  <line x1="352" y1="130" x2="396" y2="130" stroke="white" stroke-width="10" stroke-linecap="round"/>
-  <!-- Small dot accent (bottom-right) -->
-  <circle cx="352" cy="320" r="10" fill="white" opacity="0.6"/>
+  <line x1="384" y1="94" x2="384" y2="142" stroke="white" stroke-width="12" stroke-linecap="round"/>
+  <line x1="360" y1="118" x2="408" y2="118" stroke="white" stroke-width="12" stroke-linecap="round"/>
+  <!-- Small dot accent (bottom-left of main sparkle) -->
+  <circle cx="144" cy="300" r="14" fill="white" opacity="0.7"/>
 </svg>
