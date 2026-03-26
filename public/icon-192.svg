@@ -1,12 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
-  <rect width="192" height="192" rx="42" fill="#4f46e5"/>
-  <!-- Large 4-pointed sparkle star (bottom-left area) -->
-  <path d="M80 48 C84 68, 88 76, 108 80 C88 84, 84 88, 80 108 C76 88, 72 84, 52 80 C72 76, 76 68, 80 48Z" fill="white"/>
-  <!-- Small 4-pointed sparkle star (upper-right area) -->
-  <path d="M124 72 C126 80, 128 82, 136 84 C128 86, 126 88, 124 96 C122 88, 120 86, 112 84 C120 82, 122 80, 124 72Z" fill="white"/>
+  <defs>
+    <linearGradient id="bg192" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7c6bc4"/>
+      <stop offset="100%" style="stop-color:#6950a8"/>
+    </linearGradient>
+    <!-- Gloss/shine overlay -->
+    <linearGradient id="shine192" x1="0%" y1="0%" x2="60%" y2="60%">
+      <stop offset="0%" style="stop-color:rgba(255,255,255,0.18)"/>
+      <stop offset="100%" style="stop-color:rgba(255,255,255,0)"/>
+    </linearGradient>
+  </defs>
+  <!-- Background rounded square -->
+  <rect width="192" height="192" rx="42" fill="url(#bg192)"/>
+  <!-- Gloss overlay -->
+  <rect width="192" height="192" rx="42" fill="url(#shine192)"/>
+  <!-- Large 4-pointed sparkle star -->
+  <path d="M78 44 C83 66, 90 78, 114 84 C90 90, 83 98, 78 120 C73 98, 66 90, 42 84 C66 78, 73 66, 78 44Z" fill="white"/>
+  <!-- Small 4-pointed sparkle star (upper-right) -->
+  <path d="M126 68 C128 77, 130 80, 140 82 C130 84, 128 87, 126 96 C124 87, 122 84, 112 82 C122 80, 124 77, 126 68Z" fill="white"/>
   <!-- Plus sign (top-right corner) -->
-  <line x1="140" y1="42" x2="140" y2="58" stroke="white" stroke-width="4" stroke-linecap="round"/>
-  <line x1="132" y1="50" x2="148" y2="50" stroke="white" stroke-width="4" stroke-linecap="round"/>
-  <!-- Small dot accent (bottom-right) -->
-  <circle cx="132" cy="120" r="4" fill="white" opacity="0.6"/>
+  <line x1="144" y1="36" x2="144" y2="54" stroke="white" stroke-width="4.5" stroke-linecap="round"/>
+  <line x1="135" y1="45" x2="153" y2="45" stroke="white" stroke-width="4.5" stroke-linecap="round"/>
+  <!-- Small dot accent (bottom-left of main sparkle) -->
+  <circle cx="54" cy="112" r="5" fill="white" opacity="0.7"/>
 </svg>

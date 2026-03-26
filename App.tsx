@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Plus, MessageSquare, Trash2, Menu, Sparkles, LogOut, RefreshCcw, Settings, Globe, AlertCircle, Paperclip, X, Facebook, Instagram, Palette, Check } from 'lucide-react';
+import { Send, Plus, MessageSquare, Trash2, Menu, LogOut, RefreshCcw, Settings, Globe, AlertCircle, Paperclip, X, Facebook, Instagram, Palette, Check } from 'lucide-react';
 import { ChatSession, Message, UserProfile, Gender, ApiProvider } from './types';
 import { streamChatResponse, checkApiHealth, getPoolStatus, adminResetPool, getLastNodeError, getActiveKey } from './services/aiService';
 import { generateImage, getRemainingImageGenerations, getImageDailyLimit } from './services/imageService';
@@ -485,7 +485,7 @@ const App: React.FC = () => {
   if (onboardingStep === 1) return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: c.bgPrimary }}>
       <div className="w-full max-w-md border rounded-[3rem] p-12 shadow-2xl space-y-8 text-center animate-in fade-in duration-500" style={{ backgroundColor: c.bgSecondary, borderColor: c.borderPrimary }}>
-        <div className="w-20 h-20 rounded-3xl mx-auto flex items-center justify-center text-white floating-ai shadow-lg" style={{ backgroundColor: c.accent, boxShadow: `0 10px 30px ${c.accentShadow}` }}><Sparkles size={40} /></div>
+        <div className="w-20 h-20 rounded-3xl mx-auto flex items-center justify-center floating-ai shadow-lg overflow-hidden" style={{ boxShadow: `0 10px 30px ${c.accentShadow}` }}><img src="/icon-192.svg" alt="Utsho AI" className="w-full h-full" /></div>
         <div className="space-y-2">
           <h1 className="text-3xl font-black tracking-tighter" style={{ color: c.textPrimary }}>UTSHO AI</h1>
           <p className="text-sm font-medium" style={{ color: c.textMuted }}>Your Personal AI Assistant</p>
@@ -803,7 +803,7 @@ const App: React.FC = () => {
       <main className="flex-1 flex flex-col relative overflow-hidden">
         <div className="md:hidden h-14 border-b backdrop-blur-md flex items-center px-4 sticky top-0 z-40" style={{ borderColor: c.borderPrimary, backgroundColor: `${c.bgPrimary}cc` }}>
           <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2" style={{ color: c.textSecondary }}><Menu size={20} /></button>
-          <div className="flex-1 text-center font-black tracking-tighter text-lg" style={{ color: c.accent }}>UTSHO AI</div>
+          <div className="flex-1 flex items-center justify-center gap-2 font-black tracking-tighter text-lg" style={{ color: c.accent }}><img src="/icon-192.svg" alt="" className="w-7 h-7 rounded-lg" />UTSHO AI</div>
           <button onClick={() => createNewSession()} className="p-2" style={{ color: c.textSecondary }}><Plus size={20} /></button>
         </div>
 
@@ -811,7 +811,7 @@ const App: React.FC = () => {
           <div className="max-w-3xl mx-auto space-y-6 pb-4">
             {!activeSession || activeSession.messages.length === 0 ? (
               <div className="h-[65vh] flex flex-col items-center justify-center space-y-6 text-center animate-in fade-in slide-in-from-top-8 duration-700">
-                <div className="w-28 h-28 rounded-[2.5rem] flex items-center justify-center shadow-2xl floating-ai" style={{ backgroundColor: c.accent, boxShadow: `0 20px 40px ${c.accentShadow}` }}><Sparkles size={48} className="text-white" /></div>
+                <div className="w-28 h-28 rounded-[2.5rem] flex items-center justify-center shadow-2xl floating-ai overflow-hidden" style={{ boxShadow: `0 20px 40px ${c.accentShadow}` }}><img src="/icon-192.svg" alt="Utsho AI" className="w-full h-full" /></div>
                 <div className="space-y-2 px-4">
                   <h3 className="text-3xl font-black tracking-tight" style={{ color: c.textPrimary }}>Hey {userProfile?.name.split(' ')[0]}!</h3>
                   <p className="text-sm max-w-xs mx-auto font-medium" style={{ color: c.textMuted }}>Fullstack Adaptive Identity Engaged. <br/> How can I help you today?</p>

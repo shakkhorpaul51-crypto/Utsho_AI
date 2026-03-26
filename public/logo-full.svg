@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100" viewBox="0 0 400 100">
+  <defs>
+    <linearGradient id="bgFull" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7c6bc4"/>
+      <stop offset="100%" style="stop-color:#6950a8"/>
+    </linearGradient>
+    <linearGradient id="shineFull" x1="0%" y1="0%" x2="60%" y2="60%">
+      <stop offset="0%" style="stop-color:rgba(255,255,255,0.18)"/>
+      <stop offset="100%" style="stop-color:rgba(255,255,255,0)"/>
+    </linearGradient>
+  </defs>
+  <!-- Icon -->
+  <rect x="5" y="10" width="80" height="80" rx="18" fill="url(#bgFull)"/>
+  <rect x="5" y="10" width="80" height="80" rx="18" fill="url(#shineFull)"/>
+  <!-- Large sparkle -->
+  <path d="M36 22 C38 31, 41 35, 50 37 C41 39, 38 42, 36 51 C34 42, 31 39, 22 37 C31 35, 34 31, 36 22Z" fill="white"/>
+  <!-- Small sparkle -->
+  <path d="M56 32 C57 36, 58 37, 62 38 C58 39, 57 40, 56 44 C55 40, 54 39, 50 38 C54 37, 55 36, 56 32Z" fill="white"/>
+  <!-- Plus -->
+  <line x1="64" y1="18" x2="64" y2="26" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  <line x1="60" y1="22" x2="68" y2="22" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  <!-- Dot -->
+  <circle cx="26" cy="52" r="2.5" fill="white" opacity="0.7"/>
+  <!-- Text: Utsho_AI -->
+  <text x="105" y="62" font-family="Inter, system-ui, -apple-system, sans-serif" font-weight="600" font-size="36" fill="white">Utsho_AI</text>
+</svg>
